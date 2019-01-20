@@ -16,6 +16,7 @@ SAT_11AM = arrow.now('Asia/Singapore').shift(weekday=5).replace(hour=11, minute=
 MON_9AM = arrow.now('Asia/Singapore').shift(weekday=0).replace(hour=9, minute=0, second=0).timestamp
 WORK_LOCATION = 'GOOGLE SINGAPORE'
 
+
 ### SQL Object Setup ###
 db_filename = os.path.abspath('timings.sqlite')
 connection_string = 'sqlite:' + db_filename
@@ -35,7 +36,7 @@ Address.createTable(ifNotExists=True)
 def _populate_single_record(address, gmaps):
     if Address.selectBy(location=address).count():
         return
-    mrt, mrt_geo = helper.getNearestMRT(address)
+    mrt, mrt_geo = helper.get_nearst_mrt(address)
     if mrt == 'NIL':
         return
     try:
@@ -52,8 +53,7 @@ def _populate_single_record(address, gmaps):
     Address(location=address, mrt=mrt, min_walk_to_mrt=min_walk_to_mrt, min_to_work=min_to_work)
 
 
-def populate_timings_db():
-
+def populate_timings_db() -> None:
     with open('.google_api_key', 'r') as f:
         gmaps = googlemaps.Client(f.read().strip())
 
