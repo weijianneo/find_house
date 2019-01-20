@@ -1,0 +1,61 @@
+import os
+
+import arrow
+import googlemaps
+import pandas as pd
+from tqdm import tqdm
+from sqlobject import *
+
+import helper
+
+
+SAT_11AM = arrow.now('Asia/Singapore').shift(weekday=5).replace(hour=11, minute=0, second=0).timestamp
+MON_9AM = arrow.now('Asia/Singapore').shift(weekday=0).replace(hour=9, minute=0, second=0).timestamp
+WORK_LOCATION = 'GOOGLE SINGAPORE'
+
+### SQL Object Setup ###
+db_filename = os.path.abspath('timings.sqlite')
+connection_string = 'sqlite:' + db_filename
+connection = connectionForURI(connection_string)
+sqlhub.processConnection = connection
+
+
+class Address(SQLObject):
+    location = StringCol(notNone=True, unique=True)
+    mrt = StringCol(notNone=True)
+    min_walk_to_mrt = IntCol(notNone=True)
+    min_to_work = IntCol(notNone=True)
+Address.createTable(ifNotExists=True)
+#######################
+
+
+def populate_timings_db():
+
+    with open('.google_api_key', 'r') as f:
+        gmaps = googlemaps.Client(f.read().strip())
+
+    df = pd.read_csv('hdb_listings.csv')
+    addresses = df['listing-location'].dropna().str.upper().unique()
+
+    for address in tqdm(addresses):
+        if Address.selectBy(location=address).count():
+            continue
+        mrt, mrt_geo = helper.getNearestMRT(address)
+        if mrt == 'NIL':
+            continue
+        try:
+            r = gmaps.distance_matrix(address, mrt_geo, mode='walking', departure_time=SAT_11AM,
+                                      region='SG', units='metric')
+            min_walk_to_mrt = r['rows'][0]['elements'][0]['duration']['value'] // 60
+            r = gmaps.distance_matrix(address, WORK_LOCATION, mode='transit', arrival_time=MON_9AM,
+                                      region='SG', units='metric')
+            min_to_work = r['rows'][0]['elements'][0]['duration']['value'] // 60
+        except KeyError:
+            # Google maps could not find anything
+            continue
+
+        Address(location=address, mrt=mrt, min_walk_to_mrt=min_walk_to_mrt, min_to_work=min_to_work)
+
+
+if __name__ == '__main__':
+    populate_timings_db()
